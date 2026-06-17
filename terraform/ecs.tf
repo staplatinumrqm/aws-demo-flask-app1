@@ -32,7 +32,6 @@ resource "aws_ecs_task_definition" "app" {
       name      = "flask-app"
       image     = "public.ecr.aws/docker/library/python:3.11-slim"
       essential = true
-      command   = ["python", "-c", "import time; time.sleep(86400)"]
 
       portMappings = [
         {
