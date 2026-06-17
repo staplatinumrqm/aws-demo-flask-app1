@@ -66,9 +66,10 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = aws_ecr_repository.app.arn
       },
       {
-        Sid    = "ECSTaskDef"
+        Sid    = "ECS"
         Effect = "Allow"
         Action = [
+          "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition",
           "ecs:RegisterTaskDefinition"
         ]
