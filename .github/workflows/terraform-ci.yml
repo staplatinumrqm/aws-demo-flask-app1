@@ -66,7 +66,7 @@ jobs:
       # Does not block — some HIGH findings here are accepted (e.g. public HTTP on
       # the ALB, intentional until HTTPS is added). Review these in the job output.
       - name: Trivy IaC scan — report HIGH/CRITICAL (non-blocking)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform
@@ -75,7 +75,7 @@ jobs:
 
       # Gate: block the merge on CRITICAL misconfigurations only.
       - name: Trivy IaC scan — fail on CRITICAL
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform

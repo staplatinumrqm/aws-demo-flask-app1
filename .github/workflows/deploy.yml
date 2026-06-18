@@ -66,7 +66,7 @@ jobs:
 
       # Informational: surface HIGH/CRITICAL CVEs in the log for triage.
       - name: Trivy image scan — report (non-blocking)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.build.outputs.image }}
           severity: HIGH,CRITICAL
@@ -76,7 +76,7 @@ jobs:
       # Gate: block the deploy on CRITICAL, fixable CVEs before the image
       # ever reaches ECR. ignore-unfixed avoids failing on unpatchable base-OS CVEs.
       - name: Trivy image scan — fail on fixable CRITICAL
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.build.outputs.image }}
           severity: CRITICAL
