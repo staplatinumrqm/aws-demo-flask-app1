@@ -2,3 +2,7 @@
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+
+# Environment-specific / sensitive values — use terraform.tfvars.example as the template
+terraform.tfvars
+*.auto.tfvars
