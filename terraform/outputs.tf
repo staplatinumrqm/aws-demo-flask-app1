@@ -28,6 +28,11 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
 }
 
+output "terraform_plan_role_arn" {
+  description = "IMPORTANT: add this value as the AWS_PLAN_ROLE_ARN secret in your GitHub repo settings (read-only, for plan-on-PR)"
+  value       = aws_iam_role.terraform_plan.arn
+}
+
 output "dashboard_url" {
   description = "CloudWatch dashboard for ALB + ECS metrics"
   value       = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${aws_cloudwatch_dashboard.main.dashboard_name}"

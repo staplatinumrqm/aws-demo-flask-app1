@@ -1,0 +1,84 @@
+name: Terraform Plan (PR)
+
+# GitOps preview: on PRs that change infrastructure, run `terraform plan`
+# against live AWS (read-only role) and post the result as a PR comment so
+# changes are reviewed before they're ever applied.
+on:
+  pull_request:
+    paths: ["terraform/**"]
+
+permissions:
+  id-token: write       # OIDC auth to AWS
+  contents: read
+  pull-requests: write  # post the plan comment
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (read-only OIDC role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -lock-timeout=120s -out=tfplan > plan.txt 2>&1
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+          # Trim to keep the PR comment within GitHub's 65k-char limit
+          tail -c 60000 plan.txt > plan.trimmed.txt
+          {
+            echo "plan<<PLAN_EOF"
+            cat plan.trimmed.txt
+            echo "PLAN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post plan as PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `#### \`terraform plan\` 📖 exit code: \`${{ steps.plan.outputs.exitcode }}\`
+            <details><summary>Show plan</summary>
+
+            \`\`\`
+            ${{ toJSON(steps.plan.outputs.plan) }}
+            \`\`\`
+            </details>
+
+            *Pushed by @${{ github.actor }}, commit \`${{ github.sha }}\`*`;
+
+            const marker = '#### `terraform plan`';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body,
+              });
+            }
+
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
