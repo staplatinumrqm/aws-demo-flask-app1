@@ -3,6 +3,14 @@ name: CI/CD — Test, Build, Deploy
 on:
   push:
     branches: [main]
+    # Only rebuild/redeploy when something that affects the image changes —
+    # not on docs, load tests, or Terraform-only changes.
+    paths:
+      - "app/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "appspec.yaml"
+      - ".github/workflows/deploy.yml"
 
 permissions:
   id-token: write   # required for OIDC token exchange
