@@ -70,6 +70,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: terraform
+          trivyignores: .trivyignore
           severity: HIGH,CRITICAL
           exit-code: "0"
 
@@ -79,5 +80,6 @@ jobs:
         with:
           scan-type: config
           scan-ref: terraform
+          trivyignores: .trivyignore
           severity: CRITICAL
           exit-code: "1"

@@ -1,0 +1,13 @@
+# Accepted infrastructure risks (reviewed). One Trivy AVD ID per line.
+# These are deliberate, documented trade-offs — not oversights.
+
+# AVD-AWS-0054 — ALB listeners serve plain HTTP (ports 80 prod / 8080 test).
+# Accepted: TLS is the final planned phase; it needs a registered domain + ACM
+# certificate. Tracked as the last roadmap item.
+AVD-AWS-0054
+
+# AVD-AWS-0104 — Security groups allow egress to 0.0.0.0/0.
+# Accepted: ECS Fargate tasks need outbound access to pull images from ECR and to
+# read credentials from Secrets Manager / call AWS APIs. Locking egress down would
+# require VPC interface endpoints for ECR, Secrets Manager, CloudWatch, etc.
+AVD-AWS-0104
