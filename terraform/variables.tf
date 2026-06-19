@@ -67,3 +67,34 @@ variable "max_capacity" {
   type        = number
   default     = 4
 }
+
+# ── Database ──────────────────────────────────────────────────────────────────
+variable "db_name" {
+  description = "Initial Postgres database name"
+  type        = string
+  default     = "appdb"
+}
+
+variable "db_username" {
+  description = "Postgres master username (password is generated + stored in Secrets Manager)"
+  type        = string
+  default     = "appuser"
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class (db.t4g.micro is free-tier eligible)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_engine_version" {
+  description = "Postgres major version"
+  type        = string
+  default     = "16"
+}
+
+variable "db_allocated_storage" {
+  description = "RDS storage in GB (20 is free-tier)"
+  type        = number
+  default     = 20
+}

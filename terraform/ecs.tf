@@ -40,6 +40,20 @@ resource "aws_ecs_task_definition" "app" {
         }
       ]
 
+      # Non-sensitive DB connection info as plain env vars.
+      environment = [
+        { name = "DB_HOST", value = aws_db_instance.main.address },
+        { name = "DB_PORT", value = "5432" },
+        { name = "DB_NAME", value = var.db_name },
+      ]
+
+      # Credentials pulled from the RDS-managed Secrets Manager secret at launch
+      # (specific JSON keys), so they never appear in the task definition.
+      secrets = [
+        { name = "DB_USER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },
+        { name = "DB_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {

@@ -3,18 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flask App - CI/CD Ready</title>
+    <title>Flask API — ECS Fargate</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem 2.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 520px; width: 100%; }
+        h2 { margin-top: 0; }
         .status { display: inline-block; padding: 0.25rem 0.75rem; background: #2ecc71; color: white; border-radius: 50px; font-size: 0.85rem; font-weight: bold; }
+        code { background: #f0f2f5; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.9rem; }
+        ul { line-height: 1.8; }
+        .count { font-size: 2rem; font-weight: bold; color: #2c3e50; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>Flask Application</h2>
-        <p>Deployed successfully via <strong>AWS CodePipeline</strong>.</p>
-        <p>Environment: <span class="status">{{ env_mode }}</span></p>
+        <h2>Flask API <span class="status">Live</span></h2>
+        <p>Running on <strong>ECS Fargate</strong>, backed by <strong>RDS Postgres</strong>.</p>
+        <p>Items in database: <span class="count">{{ item_count if item_count is not none else "—" }}</span></p>
+        <p>Endpoints:</p>
+        <ul>
+            <li><code>GET /health</code> — liveness + DB connectivity</li>
+            <li><code>GET /api/items</code> — list items</li>
+            <li><code>POST /api/items</code> — create <code>{"name","description"}</code></li>
+            <li><code>GET /api/items/&lt;id&gt;</code> — fetch one</li>
+            <li><code>DELETE /api/items/&lt;id&gt;</code> — delete</li>
+            <li><code>GET /api/cpu?ms=250</code> — CPU load (for autoscaling demos)</li>
+        </ul>
     </div>
 </body>
 </html>

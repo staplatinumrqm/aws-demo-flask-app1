@@ -14,10 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY --from=builder /root/.local /root/.local
 COPY app/ ./
 
+RUN chmod +x ./entrypoint.sh
+
 ENV PATH=/root/.local/bin:$PATH
 ENV FLASK_ENV=Production
 ENV PORT=5000
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
+# entrypoint.sh ensures the DB schema, then launches gunicorn
+ENTRYPOINT ["./entrypoint.sh"]

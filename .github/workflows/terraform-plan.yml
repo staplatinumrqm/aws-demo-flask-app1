@@ -20,6 +20,11 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
+    # terraform.tfvars is git-ignored, so supply the repo-specific vars from the
+    # GitHub context (these have no defaults in variables.tf).
+    env:
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_github_repo: ${{ github.event.repository.name }}
     steps:
       - uses: actions/checkout@v4
 
