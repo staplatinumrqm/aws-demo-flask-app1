@@ -45,10 +45,10 @@ output "alerts_topic_arn" {
 
 output "rds_endpoint" {
   description = "RDS Postgres endpoint (private — reachable only from inside the VPC)"
-  value       = aws_db_instance.main.address
+  value       = module.database.db_address
 }
 
 output "db_secret_arn" {
   description = "Secrets Manager ARN holding the RDS master credentials"
-  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  value       = module.database.db_secret_arn
 }

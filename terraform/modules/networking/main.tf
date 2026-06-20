@@ -1,5 +1,5 @@
 resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
@@ -17,7 +17,7 @@ resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.${count.index}.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
 
   tags = { Name = "${var.app_name}-public-${count.index + 1}" }
@@ -38,6 +38,27 @@ resource "aws_route_table_association" "public" {
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
+}
+
+# Two private subnets for RDS (no route to the internet).
+resource "aws_subnet" "private" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.${count.index + 10}.0/24"
+  availability_zone = var.azs[count.index]
+
+  tags = { Name = "${var.app_name}-private-${count.index + 1}" }
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "${var.app_name}-private-rt" }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_security_group" "alb" {
@@ -89,4 +110,20 @@ resource "aws_security_group" "ecs" {
   }
 
   tags = { Name = "${var.app_name}-ecs-sg" }
+}
+
+resource "aws_security_group" "rds" {
+  name        = "${var.app_name}-rds-sg"
+  description = "RDS Postgres: accept 5432 only from ECS tasks"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Postgres from ECS tasks"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  tags = { Name = "${var.app_name}-rds-sg" }
 }

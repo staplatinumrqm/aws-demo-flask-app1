@@ -117,12 +117,19 @@ if the CloudWatch 5xx alarm trips.
 ```
 app/                 Flask application (+ entrypoint, templates)
 tests/               pytest suite (runs on SQLite — no DB needed in CI)
-terraform/           all infrastructure as code
+terraform/           root config (ALB, ECS, CodeDeploy, IAM, observability)
+  modules/
+    networking/      VPC, subnets, route tables, security groups
+    database/        RDS Postgres, subnet group, secret access
 loadtest/            k6 script + dependency-free Python load generator
 .github/workflows/   CI/CD pipelines
 appspec.yaml         CodeDeploy ECS deployment spec
 Dockerfile           multi-stage build
 ```
+
+Reusable modules expose clean inputs/outputs; the root composes them and wires the
+remaining resources. The refactor used Terraform `moved` blocks so resources were
+relocated in state with **zero** infrastructure changes.
 
 ---
 
@@ -160,5 +167,5 @@ See [`loadtest/README.md`](loadtest/README.md).
 - [x] Observability (dashboard, alarms, SNS)
 - [x] Autoscaling (load-tested)
 - [x] RDS Postgres + functional CRUD API (Secrets Manager)
-- [ ] Refactor Terraform into reusable modules
+- [x] Refactor Terraform into reusable modules (`networking`, `database`)
 - [ ] HTTPS via ACM + custom domain
