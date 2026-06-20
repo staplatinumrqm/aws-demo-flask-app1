@@ -152,9 +152,15 @@ def test_web_create_profile_and_view(client):
     assert b"@webuser" in page.data
 
 
+def _login(client, pid):
+    with client.session_transaction() as sess:
+        sess["user"] = {"profile_id": pid, "name": "Tester", "sub": "s", "email": "t@e.com"}
+
+
 def test_web_create_post_shows_on_page(client):
     loc = client.post("/profiles", data={"username": "poster"}).headers["Location"]
-    pid = loc.rstrip("/").split("/")[-1]
+    pid = int(loc.rstrip("/").split("/")[-1])
+    _login(client, pid)  # write actions require being the logged-in owner
     assert client.post(f"/profiles/{pid}/posts", data={"title": "Hello UI"}).status_code == 302
     page = client.get(f"/profiles/{pid}")
     assert b"Hello UI" in page.data
@@ -162,3 +168,42 @@ def test_web_create_post_shows_on_page(client):
 
 def test_web_profile_404(client):
     assert client.get("/profiles/9999").status_code == 404
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+def test_post_requires_login(client):
+    loc = client.post("/profiles", data={"username": "loner"}).headers["Location"]
+    pid = int(loc.rstrip("/").split("/")[-1])
+    client.post(f"/profiles/{pid}/posts", data={"title": "Sneaky"})  # no session
+    assert b"Sneaky" not in client.get(f"/profiles/{pid}").data
+
+
+def test_login_without_config_redirects_home(client):
+    res = client.get("/login")
+    assert res.status_code == 302  # no Cognito config in the default test app
+
+
+def test_login_redirects_to_cognito():
+    from sqlalchemy.pool import StaticPool
+
+    from app import create_app, db
+
+    cfg_app = create_app(
+        {
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            "SQLALCHEMY_ENGINE_OPTIONS": {
+                "connect_args": {"check_same_thread": False},
+                "poolclass": StaticPool,
+            },
+            "COGNITO_DOMAIN": "https://example.auth.us-east-1.amazoncognito.com",
+            "COGNITO_CLIENT_ID": "abc123",
+            "APP_BASE_URL": "https://app.example.com",
+        }
+    )
+    with cfg_app.app_context():
+        db.create_all()
+    res = cfg_app.test_client().get("/login")
+    assert res.status_code == 302
+    assert "/oauth2/authorize" in res.headers["Location"]
+    assert "identity_provider=Google" in res.headers["Location"]

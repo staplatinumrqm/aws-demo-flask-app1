@@ -4,6 +4,8 @@ import time
 import uuid
 from datetime import datetime
 
+from urllib.parse import urlencode
+
 from flask import (
     Flask,
     Response,
@@ -13,6 +15,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 from flask_sqlalchemy import SQLAlchemy
@@ -87,6 +90,17 @@ class Post(db.Model):
         }
 
 
+class AuthUser(db.Model):
+    # Links a Cognito (Google) identity to a profile. A new table, so create_all
+    # provisions it without touching the existing profiles table.
+    __tablename__ = "auth_users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cognito_sub = db.Column(db.String(128), unique=True, nullable=False)
+    email = db.Column(db.String(255))
+    profile_id = db.Column(db.Integer, db.ForeignKey("profiles.id"), nullable=False)
+
+
 _s3_client = None
 
 
@@ -146,14 +160,118 @@ def create_app(test_config=None):
     app.config["MAX_CONTENT_LENGTH"] = MAX_AVATAR_BYTES
     app.config["AVATAR_BUCKET"] = os.environ.get("AVATAR_BUCKET")
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+    app.config["COGNITO_DOMAIN"] = os.environ.get("COGNITO_DOMAIN")
+    app.config["COGNITO_CLIENT_ID"] = os.environ.get("COGNITO_CLIENT_ID")
+    app.config["COGNITO_CLIENT_SECRET"] = os.environ.get("COGNITO_CLIENT_SECRET")
+    app.config["APP_BASE_URL"] = os.environ.get("APP_BASE_URL")
 
     if test_config:
         app.config.update(test_config)
 
     db.init_app(app)
+
+    @app.context_processor
+    def _inject_user():
+        return {"current_user": session.get("user")}
+
+    _register_auth_routes(app)
     _register_web_routes(app)
     _register_api_routes(app)
     return app
+
+
+def _create_profile_for_login(email, name):
+    base = "".join(c for c in (email.split("@")[0] if email else "user").lower()
+                   if c.isalnum() or c in "._-") or "user"
+    username, i = base, 1
+    while Profile.query.filter_by(username=username).first():
+        i += 1
+        username = f"{base}{i}"
+    profile = Profile(username=username, display_name=name or username, bio="")
+    db.session.add(profile)
+    db.session.commit()
+    return profile
+
+
+def _register_auth_routes(app):
+    @app.route("/login")
+    def login():
+        domain = app.config.get("COGNITO_DOMAIN")
+        client_id = app.config.get("COGNITO_CLIENT_ID")
+        base = app.config.get("APP_BASE_URL")
+        if not (domain and client_id and base):
+            flash("Login is not configured yet.", "error")
+            return redirect(url_for("home"))
+        params = urlencode({
+            "client_id": client_id,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "redirect_uri": f"{base}/auth/callback",
+            "identity_provider": "Google",
+        })
+        return redirect(f"{domain}/oauth2/authorize?{params}")
+
+    @app.route("/auth/callback")
+    def auth_callback():
+        code = request.args.get("code")
+        domain = app.config.get("COGNITO_DOMAIN")
+        client_id = app.config.get("COGNITO_CLIENT_ID")
+        client_secret = app.config.get("COGNITO_CLIENT_SECRET") or ""
+        base = app.config.get("APP_BASE_URL")
+        if not (code and domain and client_id and base):
+            flash("Login failed.", "error")
+            return redirect(url_for("home"))
+
+        import requests  # lazy import so tests don't need it
+
+        token_res = requests.post(
+            f"{domain}/oauth2/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "code": code,
+                "redirect_uri": f"{base}/auth/callback",
+            },
+            auth=(client_id, client_secret),
+            timeout=10,
+        )
+        if token_res.status_code != 200:
+            flash("Login failed during token exchange.", "error")
+            return redirect(url_for("home"))
+
+        access_token = token_res.json().get("access_token")
+        info = requests.get(
+            f"{domain}/oauth2/userInfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        ).json()
+
+        sub = info.get("sub")
+        email = info.get("email", "")
+        name = info.get("name") or (email.split("@")[0] if email else "user")
+
+        auth_user = AuthUser.query.filter_by(cognito_sub=sub).first()
+        if auth_user is None:
+            profile = _create_profile_for_login(email, name)
+            auth_user = AuthUser(cognito_sub=sub, email=email, profile_id=profile.id)
+            db.session.add(auth_user)
+            db.session.commit()
+
+        session["user"] = {"sub": sub, "email": email, "name": name,
+                           "profile_id": auth_user.profile_id}
+        flash("Signed in with Google.", "success")
+        return redirect(url_for("web_profile", pid=auth_user.profile_id))
+
+    @app.route("/logout")
+    def logout():
+        session.pop("user", None)
+        domain = app.config.get("COGNITO_DOMAIN")
+        client_id = app.config.get("COGNITO_CLIENT_ID")
+        base = app.config.get("APP_BASE_URL")
+        if domain and client_id and base:
+            params = urlencode({"client_id": client_id, "logout_uri": f"{base}/"})
+            return redirect(f"{domain}/logout?{params}")
+        return redirect(url_for("home"))
 
 
 # ── Web (server-rendered) routes ──────────────────────────────────────────────
@@ -199,6 +317,10 @@ def _register_web_routes(app):
         profile = db.session.get(Profile, pid)
         if profile is None:
             abort(404)
+        user = session.get("user")
+        if not user or user.get("profile_id") != pid:
+            flash("Sign in with Google to post on your own profile.", "error")
+            return redirect(url_for("web_profile", pid=pid))
         title = (request.form.get("title") or "").strip()
         if not title:
             flash("Post title is required.", "error")
@@ -215,6 +337,10 @@ def _register_web_routes(app):
         profile = db.session.get(Profile, pid)
         if profile is None:
             abort(404)
+        user = session.get("user")
+        if not user or user.get("profile_id") != pid:
+            flash("Sign in with Google to change your own profile picture.", "error")
+            return redirect(url_for("web_profile", pid=pid))
         status, error = _store_avatar(app.config.get("AVATAR_BUCKET"), profile, request.files.get("file"))
         flash("Profile picture updated." if error is None else error,
               "success" if error is None else "error")

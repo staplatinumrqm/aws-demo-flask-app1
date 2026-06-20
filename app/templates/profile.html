@@ -12,6 +12,7 @@
     {% if profile.bio %}<p>{{ profile.bio }}</p>{% endif %}
 </div>
 
+{% if current_user and current_user.profile_id == profile.id %}
 <div class="card">
     <h2>Profile picture</h2>
     <form method="post" action="{{ url_for('web_upload_avatar', pid=profile.id) }}" enctype="multipart/form-data">
@@ -29,6 +30,7 @@
         <button type="submit">Publish</button>
     </form>
 </div>
+{% endif %}
 
 <div class="card">
     <h2>Posts</h2>

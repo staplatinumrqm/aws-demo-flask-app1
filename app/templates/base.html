@@ -34,7 +34,14 @@
 <body>
     <header class="nav">
         <a class="brand" href="{{ url_for('home') }}">⚙️ DevOps Demo</a>
-        <div>{% block nav %}{% endblock %}</div>
+        <div>
+            {% if current_user %}
+                <a href="{{ url_for('web_profile', pid=current_user.profile_id) }}">{{ current_user.name }}</a>
+                &nbsp;·&nbsp;<a href="{{ url_for('logout') }}">Logout</a>
+            {% else %}
+                <a href="{{ url_for('login') }}">Sign in with Google</a>
+            {% endif %}
+        </div>
     </header>
     <main class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
