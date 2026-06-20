@@ -57,3 +57,8 @@ output "avatar_bucket" {
   description = "S3 bucket storing profile pictures"
   value       = aws_s3_bucket.avatars.bucket
 }
+
+output "app_https_url" {
+  description = "Public HTTPS URL (API Gateway) — use this instead of the HTTP ALB"
+  value       = aws_apigatewayv2_api.app.api_endpoint
+}
