@@ -2,8 +2,8 @@ resource "aws_lb" "main" {
   name               = "${var.app_name}-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  security_groups    = [module.networking.alb_sg_id]
+  subnets            = module.networking.public_subnet_ids
 
   tags = { Name = "${var.app_name}-alb" }
 }
@@ -12,7 +12,7 @@ resource "aws_lb_target_group" "blue" {
   name        = "${var.app_name}-blue"
   port        = var.container_port
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
   target_type = "ip"
 
   health_check {
@@ -31,7 +31,7 @@ resource "aws_lb_target_group" "green" {
   name        = "${var.app_name}-green"
   port        = var.container_port
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
   target_type = "ip"
 
   health_check {

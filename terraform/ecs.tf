@@ -42,7 +42,7 @@ resource "aws_ecs_task_definition" "app" {
 
       # Non-sensitive DB connection info as plain env vars.
       environment = [
-        { name = "DB_HOST", value = aws_db_instance.main.address },
+        { name = "DB_HOST", value = module.database.db_address },
         { name = "DB_PORT", value = "5432" },
         { name = "DB_NAME", value = var.db_name },
       ]
@@ -50,8 +50,8 @@ resource "aws_ecs_task_definition" "app" {
       # Credentials pulled from the RDS-managed Secrets Manager secret at launch
       # (specific JSON keys), so they never appear in the task definition.
       secrets = [
-        { name = "DB_USER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },
-        { name = "DB_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+        { name = "DB_USER", valueFrom = "${module.database.db_secret_arn}:username::" },
+        { name = "DB_PASSWORD", valueFrom = "${module.database.db_secret_arn}:password::" },
       ]
 
       logConfiguration = {
@@ -80,8 +80,8 @@ resource "aws_ecs_service" "app" {
   }
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    subnets          = module.networking.public_subnet_ids
+    security_groups  = [module.networking.ecs_sg_id]
     assign_public_ip = true
   }
 
