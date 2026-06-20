@@ -98,3 +98,17 @@ variable "db_allocated_storage" {
   type        = number
   default     = 20
 }
+
+# ── Google OAuth (for Cognito federated login) ────────────────────────────────
+variable "google_client_id" {
+  description = "Google OAuth 2.0 client ID (created in Google Cloud Console)"
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth 2.0 client secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

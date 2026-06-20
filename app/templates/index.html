@@ -6,15 +6,13 @@
     <p class="muted">A small social demo running on ECS Fargate, backed by RDS Postgres and S3.</p>
 </div>
 
+{% if not current_user %}
 <div class="card">
-    <h2>Create a profile</h2>
-    <form method="post" action="{{ url_for('web_create_profile') }}">
-        <input name="username" placeholder="username" required>
-        <input name="display_name" placeholder="Display name">
-        <textarea name="bio" placeholder="Short bio" rows="2"></textarea>
-        <button type="submit">Create profile</button>
-    </form>
+    <h2>Join in</h2>
+    <p class="muted">Sign in with Google to create your profile, upload a picture, and write posts.</p>
+    <a href="{{ url_for('login') }}"><button>Sign in with Google</button></a>
 </div>
+{% endif %}
 
 <div class="card">
     <h2>People</h2>

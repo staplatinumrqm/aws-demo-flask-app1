@@ -55,6 +55,14 @@ resource "aws_iam_role_policy" "terraform_plan_state" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = aws_dynamodb_table.tfstate_lock.arn
+      },
+      {
+        # `terraform plan` refreshes the app-config secret version, which needs
+        # GetSecretValue (not covered by the ReadOnlyAccess managed policy).
+        Sid      = "ReadAppSecret"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.app.arn
       }
     ]
   })
