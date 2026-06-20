@@ -135,3 +135,30 @@ def test_avatar_requires_file(client):
 
 def test_avatar_on_missing_profile_404(client):
     assert client.post("/api/profiles/9999/avatar").status_code == 404
+
+
+# ── Web (server-rendered) pages ───────────────────────────────────────────────
+def test_home_page_renders(client):
+    res = client.get("/")
+    assert res.status_code == 200
+    assert b"Profiles" in res.data
+
+
+def test_web_create_profile_and_view(client):
+    res = client.post("/profiles", data={"username": "webuser", "display_name": "Web User"})
+    assert res.status_code == 302
+    page = client.get(res.headers["Location"])
+    assert page.status_code == 200
+    assert b"@webuser" in page.data
+
+
+def test_web_create_post_shows_on_page(client):
+    loc = client.post("/profiles", data={"username": "poster"}).headers["Location"]
+    pid = loc.rstrip("/").split("/")[-1]
+    assert client.post(f"/profiles/{pid}/posts", data={"title": "Hello UI"}).status_code == 302
+    page = client.get(f"/profiles/{pid}")
+    assert b"Hello UI" in page.data
+
+
+def test_web_profile_404(client):
+    assert client.get("/profiles/9999").status_code == 404

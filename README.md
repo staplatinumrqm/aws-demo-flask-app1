@@ -26,13 +26,13 @@ and shipped through GitHub Actions using OIDC (no long-lived AWS keys).
                         │  ECS Fargate tasks  │  ◄── autoscale 1→4 on CPU/memory
                         │  (Flask + gunicorn) │
                         └────────────────────┘
-                          │ pulls image          │ SQL :5432 (private)
-                          ▼                       ▼
-                   ┌──────────────┐        ┌──────────────────┐
-                   │  Amazon ECR  │        │  RDS PostgreSQL   │  (private subnets)
-                   └──────────────┘        └──────────────────┘
-                                                   ▲
-                                            creds from Secrets Manager
+              pulls image │      SQL :5432 │        │ avatars (task role)
+                          ▼                ▼        ▼
+                ┌──────────────┐  ┌────────────────┐  ┌──────────────┐
+                │  Amazon ECR  │  │ RDS PostgreSQL │  │  S3 (private) │
+                └──────────────┘  └────────────────┘  └──────────────┘
+                                          ▲
+                                   creds from Secrets Manager
 ```
 
 All resources live in a single VPC: public subnets for the ALB and tasks, private
@@ -46,6 +46,7 @@ subnets for RDS. CloudWatch alarms feed an SNS topic and drive CodeDeploy auto-r
 |-------|-----------|
 | Application | Python, Flask, SQLAlchemy, gunicorn |
 | Database | Amazon RDS PostgreSQL (credentials in Secrets Manager) |
+| Object storage | Amazon S3 (private bucket for profile pictures, task-role access) |
 | Container | Docker (multi-stage), Amazon ECR (scan-on-push) |
 | Compute | Amazon ECS Fargate |
 | Networking | VPC, public/private subnets, ALB, security groups |
@@ -62,13 +63,18 @@ subnets for RDS. CloudWatch alarms feed an SNS topic and drive CodeDeploy auto-r
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/` | Status page (shows item count) |
+| `GET` | `/` | Status page (profile/post/item counts) |
 | `GET` | `/health` | Liveness + DB connectivity (ALB health check) |
-| `GET` | `/api/items` | List items |
-| `POST` | `/api/items` | Create item — `{"name", "description"}` |
-| `GET` | `/api/items/<id>` | Fetch one item |
-| `DELETE` | `/api/items/<id>` | Delete an item |
+| `GET` / `POST` | `/api/profiles` | List / create user profiles |
+| `GET` / `DELETE` | `/api/profiles/<id>` | Fetch (with posts) / delete a profile |
+| `POST` | `/api/profiles/<id>/avatar` | Upload profile picture (multipart) → S3 |
+| `GET` | `/api/profiles/<id>/avatar` | Fetch profile picture (streamed from S3) |
+| `GET` / `POST` | `/api/profiles/<id>/posts` | List / create posts for a profile |
+| `GET` / `POST` | `/api/items` | Simple item CRUD |
 | `GET` | `/api/cpu?ms=<n>` | CPU-bound work (used to exercise autoscaling) |
+
+Profiles and posts are stored in **RDS Postgres**; profile pictures live in a private
+**S3** bucket and are accessed via the ECS **task role** (no access keys).
 
 ---
 

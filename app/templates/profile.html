@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}@{{ profile.username }} — DevOps Demo{% endblock %}
+{% block content %}
+<div class="card profile-card">
+    {% if profile.avatar_key %}
+    <img class="avatar lg" src="{{ url_for('get_avatar', pid=profile.id) }}" alt="">
+    {% else %}
+    <div class="avatar lg ph">{{ (profile.display_name or profile.username)[0]|upper }}</div>
+    {% endif %}
+    <h1 style="margin:.6rem 0 0">{{ profile.display_name or profile.username }}</h1>
+    <span class="muted">@{{ profile.username }}</span>
+    {% if profile.bio %}<p>{{ profile.bio }}</p>{% endif %}
+</div>
+
+<div class="card">
+    <h2>Profile picture</h2>
+    <form method="post" action="{{ url_for('web_upload_avatar', pid=profile.id) }}" enctype="multipart/form-data">
+        <input type="file" name="file" accept="image/png,image/jpeg,image/webp" required>
+        <button type="submit">Upload</button>
+    </form>
+    <p class="muted">PNG, JPEG, or WebP up to 5 MB. Stored privately in S3.</p>
+</div>
+
+<div class="card">
+    <h2>Write a post</h2>
+    <form method="post" action="{{ url_for('web_create_post', pid=profile.id) }}">
+        <input name="title" placeholder="Title" required>
+        <textarea name="body" placeholder="Say something..." rows="3"></textarea>
+        <button type="submit">Publish</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Posts</h2>
+    {% if posts %}
+        {% for post in posts %}
+        <div class="post">
+            <strong>{{ post.title }}</strong>
+            {% if post.body %}<p>{{ post.body }}</p>{% endif %}
+            <div class="muted">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <p class="muted">No posts yet.</p>
+    {% endif %}
+</div>
+
+<p><a href="{{ url_for('home') }}">← back to feed</a></p>
+{% endblock %}

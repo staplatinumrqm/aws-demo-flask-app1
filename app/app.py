@@ -4,7 +4,17 @@ import time
 import uuid
 from datetime import datetime
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import (
+    Flask,
+    Response,
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
@@ -90,6 +100,30 @@ def _s3():
     return _s3_client
 
 
+def _store_avatar(bucket, profile, file):
+    """Validate + upload an avatar to S3. Returns (status_code, error_or_none)."""
+    if file is None or file.filename == "":
+        return 400, "a file is required"
+    if file.mimetype not in ALLOWED_IMAGE_TYPES:
+        return 400, f"unsupported type '{file.mimetype}' (png/jpeg/webp)"
+    if not bucket:
+        return 503, "avatar storage is not configured"
+
+    ext = ALLOWED_IMAGE_TYPES[file.mimetype]
+    key = f"avatars/{profile.id}/{uuid.uuid4().hex}.{ext}"
+    _s3().put_object(Bucket=bucket, Key=key, Body=file.read(), ContentType=file.mimetype)
+
+    old_key = profile.avatar_key
+    profile.avatar_key = key
+    db.session.commit()
+    if old_key:
+        try:
+            _s3().delete_object(Bucket=bucket, Key=old_key)
+        except Exception:
+            pass  # best-effort cleanup of the previous avatar
+    return 201, None
+
+
 def _database_uri():
     """Postgres in production (from injected env), SQLite locally / in tests."""
     url = os.environ.get("DATABASE_URL")
@@ -111,28 +145,84 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = MAX_AVATAR_BYTES
     app.config["AVATAR_BUCKET"] = os.environ.get("AVATAR_BUCKET")
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
     if test_config:
         app.config.update(test_config)
 
     db.init_app(app)
-    _register_routes(app)
+    _register_web_routes(app)
+    _register_api_routes(app)
     return app
 
 
-def _register_routes(app):
+# ── Web (server-rendered) routes ──────────────────────────────────────────────
+def _register_web_routes(app):
     @app.route("/")
     def home():
         try:
-            counts = {
-                "profiles": Profile.query.count(),
-                "posts": Post.query.count(),
-                "items": Item.query.count(),
-            }
+            profiles = Profile.query.order_by(Profile.id.desc()).limit(50).all()
+            posts = Post.query.order_by(Post.id.desc()).limit(15).all()
         except Exception:
-            counts = None
-        return render_template("index.html", counts=counts)
+            profiles, posts = [], []
+        return render_template("index.html", profiles=profiles, posts=posts)
 
+    @app.route("/profiles/<int:pid>")
+    def web_profile(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            abort(404)
+        posts = sorted(profile.posts, key=lambda p: p.id, reverse=True)
+        return render_template("profile.html", profile=profile, posts=posts)
+
+    @app.route("/profiles", methods=["POST"])
+    def web_create_profile():
+        username = (request.form.get("username") or "").strip()
+        if not username:
+            flash("Username is required.", "error")
+            return redirect(url_for("home"))
+        if Profile.query.filter_by(username=username).first():
+            flash("That username is already taken.", "error")
+            return redirect(url_for("home"))
+        profile = Profile(
+            username=username,
+            display_name=(request.form.get("display_name") or "").strip(),
+            bio=(request.form.get("bio") or "").strip(),
+        )
+        db.session.add(profile)
+        db.session.commit()
+        flash("Profile created.", "success")
+        return redirect(url_for("web_profile", pid=profile.id))
+
+    @app.route("/profiles/<int:pid>/posts", methods=["POST"])
+    def web_create_post(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            abort(404)
+        title = (request.form.get("title") or "").strip()
+        if not title:
+            flash("Post title is required.", "error")
+            return redirect(url_for("web_profile", pid=pid))
+        db.session.add(
+            Post(profile_id=pid, title=title, body=(request.form.get("body") or "").strip())
+        )
+        db.session.commit()
+        flash("Post published.", "success")
+        return redirect(url_for("web_profile", pid=pid))
+
+    @app.route("/profiles/<int:pid>/avatar", methods=["POST"])
+    def web_upload_avatar(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            abort(404)
+        status, error = _store_avatar(app.config.get("AVATAR_BUCKET"), profile, request.files.get("file"))
+        flash("Profile picture updated." if error is None else error,
+              "success" if error is None else "error")
+        return redirect(url_for("web_profile", pid=pid))
+
+
+# ── JSON API routes ───────────────────────────────────────────────────────────
+def _register_api_routes(app):
     @app.route("/health")
     def health():
         try:
@@ -141,7 +231,6 @@ def _register_routes(app):
         except Exception as exc:
             return jsonify({"status": "unhealthy", "database": str(exc), "code": 503}), 503
 
-    # ── Items (kept from the original CRUD demo) ──────────────────────────────
     @app.route("/api/items", methods=["GET"])
     def list_items():
         items = Item.query.order_by(Item.id.desc()).limit(100).all()
@@ -174,7 +263,6 @@ def _register_routes(app):
         db.session.commit()
         return "", 204
 
-    # ── Profiles ──────────────────────────────────────────────────────────────
     @app.route("/api/profiles", methods=["GET"])
     def list_profiles():
         profiles = Profile.query.order_by(Profile.id.desc()).limit(100).all()
@@ -215,7 +303,6 @@ def _register_routes(app):
         db.session.commit()
         return "", 204
 
-    # ── Posts (belong to a profile — the "write something to the DB" feature) ──
     @app.route("/api/profiles/<int:pid>/posts", methods=["GET"])
     def list_posts(pid):
         if db.session.get(Profile, pid) is None:
@@ -236,37 +323,14 @@ def _register_routes(app):
         db.session.commit()
         return jsonify(post.to_dict()), 201
 
-    # ── Profile picture upload / serve (S3 via the task role) ─────────────────
     @app.route("/api/profiles/<int:pid>/avatar", methods=["POST"])
     def upload_avatar(pid):
         profile = db.session.get(Profile, pid)
         if profile is None:
             return jsonify({"error": "not found"}), 404
-
-        file = request.files.get("file")
-        if file is None or file.filename == "":
-            return jsonify({"error": "a 'file' form field is required"}), 400
-        if file.mimetype not in ALLOWED_IMAGE_TYPES:
-            return jsonify({"error": f"unsupported type '{file.mimetype}' (png/jpeg/webp)"}), 400
-
-        bucket = app.config.get("AVATAR_BUCKET")
-        if not bucket:
-            return jsonify({"error": "avatar storage is not configured"}), 503
-
-        ext = ALLOWED_IMAGE_TYPES[file.mimetype]
-        key = f"avatars/{pid}/{uuid.uuid4().hex}.{ext}"
-        _s3().put_object(Bucket=bucket, Key=key, Body=file.read(), ContentType=file.mimetype)
-
-        old_key = profile.avatar_key
-        profile.avatar_key = key
-        db.session.commit()
-
-        if old_key:
-            try:
-                _s3().delete_object(Bucket=bucket, Key=old_key)
-            except Exception:
-                pass  # best-effort cleanup of the previous avatar
-
+        status, error = _store_avatar(app.config.get("AVATAR_BUCKET"), profile, request.files.get("file"))
+        if error is not None:
+            return jsonify({"error": error}), status
         return jsonify(profile.to_dict()), 201
 
     @app.route("/api/profiles/<int:pid>/avatar", methods=["GET"])
@@ -283,7 +347,6 @@ def _register_routes(app):
             mimetype=obj.get("ContentType", "application/octet-stream"),
         )
 
-    # ── CPU load endpoint (for autoscaling demos) ─────────────────────────────
     @app.route("/api/cpu")
     def cpu_burn():
         target_ms = min(int(request.args.get("ms", 250)), 5000)
