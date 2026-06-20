@@ -52,3 +52,8 @@ output "db_secret_arn" {
   description = "Secrets Manager ARN holding the RDS master credentials"
   value       = module.database.db_secret_arn
 }
+
+output "avatar_bucket" {
+  description = "S3 bucket storing profile pictures"
+  value       = aws_s3_bucket.avatars.bucket
+}

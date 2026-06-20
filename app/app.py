@@ -1,13 +1,18 @@
 import hashlib
 import os
 import time
+import uuid
 from datetime import datetime
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
 db = SQLAlchemy()
+
+# Allowed avatar content types → file extension
+ALLOWED_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+MAX_AVATAR_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 class Item(db.Model):
@@ -25,6 +30,64 @@ class Item(db.Model):
             "description": self.description,
             "created_at": self.created_at.isoformat() + "Z",
         }
+
+
+class Profile(db.Model):
+    __tablename__ = "profiles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, nullable=False)
+    display_name = db.Column(db.String(120), nullable=False, default="")
+    bio = db.Column(db.Text, nullable=False, default="")
+    avatar_key = db.Column(db.String(256))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    posts = db.relationship(
+        "Post", backref="profile", cascade="all, delete-orphan", lazy=True
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "display_name": self.display_name,
+            "bio": self.bio,
+            "has_avatar": self.avatar_key is not None,
+            "avatar_url": f"/api/profiles/{self.id}/avatar" if self.avatar_key else None,
+            "created_at": self.created_at.isoformat() + "Z",
+        }
+
+
+class Post(db.Model):
+    __tablename__ = "posts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    profile_id = db.Column(db.Integer, db.ForeignKey("profiles.id"), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    body = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "profile_id": self.profile_id,
+            "title": self.title,
+            "body": self.body,
+            "created_at": self.created_at.isoformat() + "Z",
+        }
+
+
+_s3_client = None
+
+
+def _s3():
+    # Lazy import + cache so the test suite doesn't require boto3 / AWS creds.
+    global _s3_client
+    if _s3_client is None:
+        import boto3
+
+        _s3_client = boto3.client("s3")
+    return _s3_client
 
 
 def _database_uri():
@@ -46,6 +109,8 @@ def create_app(test_config=None):
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = _database_uri()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["MAX_CONTENT_LENGTH"] = MAX_AVATAR_BYTES
+    app.config["AVATAR_BUCKET"] = os.environ.get("AVATAR_BUCKET")
 
     if test_config:
         app.config.update(test_config)
@@ -59,20 +124,24 @@ def _register_routes(app):
     @app.route("/")
     def home():
         try:
-            count = Item.query.count()
+            counts = {
+                "profiles": Profile.query.count(),
+                "posts": Post.query.count(),
+                "items": Item.query.count(),
+            }
         except Exception:
-            count = None
-        return render_template("index.html", item_count=count)
+            counts = None
+        return render_template("index.html", counts=counts)
 
     @app.route("/health")
     def health():
-        # Liveness + DB connectivity (the ALB target group polls this).
         try:
             db.session.execute(text("SELECT 1"))
             return jsonify({"status": "healthy", "database": "connected", "code": 200})
         except Exception as exc:
             return jsonify({"status": "unhealthy", "database": str(exc), "code": 503}), 503
 
+    # ── Items (kept from the original CRUD demo) ──────────────────────────────
     @app.route("/api/items", methods=["GET"])
     def list_items():
         items = Item.query.order_by(Item.id.desc()).limit(100).all()
@@ -105,10 +174,118 @@ def _register_routes(app):
         db.session.commit()
         return "", 204
 
+    # ── Profiles ──────────────────────────────────────────────────────────────
+    @app.route("/api/profiles", methods=["GET"])
+    def list_profiles():
+        profiles = Profile.query.order_by(Profile.id.desc()).limit(100).all()
+        return jsonify([p.to_dict() for p in profiles])
+
+    @app.route("/api/profiles", methods=["POST"])
+    def create_profile():
+        data = request.get_json(silent=True) or {}
+        username = (data.get("username") or "").strip()
+        if not username:
+            return jsonify({"error": "username is required"}), 400
+        if Profile.query.filter_by(username=username).first():
+            return jsonify({"error": "username already taken"}), 409
+        profile = Profile(
+            username=username,
+            display_name=(data.get("display_name") or "").strip(),
+            bio=(data.get("bio") or "").strip(),
+        )
+        db.session.add(profile)
+        db.session.commit()
+        return jsonify(profile.to_dict()), 201
+
+    @app.route("/api/profiles/<int:pid>", methods=["GET"])
+    def get_profile(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            return jsonify({"error": "not found"}), 404
+        data = profile.to_dict()
+        data["posts"] = [p.to_dict() for p in profile.posts]
+        return jsonify(data)
+
+    @app.route("/api/profiles/<int:pid>", methods=["DELETE"])
+    def delete_profile(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            return jsonify({"error": "not found"}), 404
+        db.session.delete(profile)
+        db.session.commit()
+        return "", 204
+
+    # ── Posts (belong to a profile — the "write something to the DB" feature) ──
+    @app.route("/api/profiles/<int:pid>/posts", methods=["GET"])
+    def list_posts(pid):
+        if db.session.get(Profile, pid) is None:
+            return jsonify({"error": "profile not found"}), 404
+        posts = Post.query.filter_by(profile_id=pid).order_by(Post.id.desc()).all()
+        return jsonify([p.to_dict() for p in posts])
+
+    @app.route("/api/profiles/<int:pid>/posts", methods=["POST"])
+    def create_post(pid):
+        if db.session.get(Profile, pid) is None:
+            return jsonify({"error": "profile not found"}), 404
+        data = request.get_json(silent=True) or {}
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "title is required"}), 400
+        post = Post(profile_id=pid, title=title, body=(data.get("body") or "").strip())
+        db.session.add(post)
+        db.session.commit()
+        return jsonify(post.to_dict()), 201
+
+    # ── Profile picture upload / serve (S3 via the task role) ─────────────────
+    @app.route("/api/profiles/<int:pid>/avatar", methods=["POST"])
+    def upload_avatar(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None:
+            return jsonify({"error": "not found"}), 404
+
+        file = request.files.get("file")
+        if file is None or file.filename == "":
+            return jsonify({"error": "a 'file' form field is required"}), 400
+        if file.mimetype not in ALLOWED_IMAGE_TYPES:
+            return jsonify({"error": f"unsupported type '{file.mimetype}' (png/jpeg/webp)"}), 400
+
+        bucket = app.config.get("AVATAR_BUCKET")
+        if not bucket:
+            return jsonify({"error": "avatar storage is not configured"}), 503
+
+        ext = ALLOWED_IMAGE_TYPES[file.mimetype]
+        key = f"avatars/{pid}/{uuid.uuid4().hex}.{ext}"
+        _s3().put_object(Bucket=bucket, Key=key, Body=file.read(), ContentType=file.mimetype)
+
+        old_key = profile.avatar_key
+        profile.avatar_key = key
+        db.session.commit()
+
+        if old_key:
+            try:
+                _s3().delete_object(Bucket=bucket, Key=old_key)
+            except Exception:
+                pass  # best-effort cleanup of the previous avatar
+
+        return jsonify(profile.to_dict()), 201
+
+    @app.route("/api/profiles/<int:pid>/avatar", methods=["GET"])
+    def get_avatar(pid):
+        profile = db.session.get(Profile, pid)
+        if profile is None or not profile.avatar_key:
+            return jsonify({"error": "not found"}), 404
+        bucket = app.config.get("AVATAR_BUCKET")
+        if not bucket:
+            return jsonify({"error": "avatar storage is not configured"}), 503
+        obj = _s3().get_object(Bucket=bucket, Key=profile.avatar_key)
+        return Response(
+            obj["Body"].read(),
+            mimetype=obj.get("ContentType", "application/octet-stream"),
+        )
+
+    # ── CPU load endpoint (for autoscaling demos) ─────────────────────────────
     @app.route("/api/cpu")
     def cpu_burn():
-        # Deliberately CPU-bound work to exercise autoscaling under load testing.
-        # ?ms=<int> controls roughly how long to spin (capped to protect the box).
         target_ms = min(int(request.args.get("ms", 250)), 5000)
         deadline = time.perf_counter() + target_ms / 1000.0
         iterations = 0

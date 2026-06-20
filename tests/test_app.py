@@ -82,3 +82,56 @@ def test_cpu_endpoint(client):
     res = client.get("/api/cpu?ms=10")
     assert res.status_code == 200
     assert res.get_json()["iterations"] > 0
+
+
+# ── Profiles ──────────────────────────────────────────────────────────────────
+def test_create_profile(client):
+    res = client.post("/api/profiles", json={"username": "alice", "display_name": "Alice"})
+    assert res.status_code == 201
+    body = res.get_json()
+    assert body["username"] == "alice"
+    assert body["has_avatar"] is False
+
+
+def test_profile_requires_username(client):
+    assert client.post("/api/profiles", json={"display_name": "no user"}).status_code == 400
+
+
+def test_duplicate_username_conflict(client):
+    client.post("/api/profiles", json={"username": "bob"})
+    assert client.post("/api/profiles", json={"username": "bob"}).status_code == 409
+
+
+def test_get_missing_profile_404(client):
+    assert client.get("/api/profiles/9999").status_code == 404
+
+
+# ── Posts ───────────────────────────────────────────────────────────────────--
+def test_create_and_list_posts(client):
+    pid = client.post("/api/profiles", json={"username": "carol"}).get_json()["id"]
+    res = client.post(f"/api/profiles/{pid}/posts", json={"title": "Hello", "body": "world"})
+    assert res.status_code == 201
+    assert res.get_json()["title"] == "Hello"
+
+    listing = client.get(f"/api/profiles/{pid}/posts").get_json()
+    assert len(listing) == 1
+
+
+def test_post_requires_title(client):
+    pid = client.post("/api/profiles", json={"username": "dave"}).get_json()["id"]
+    assert client.post(f"/api/profiles/{pid}/posts", json={"body": "no title"}).status_code == 400
+
+
+def test_post_on_missing_profile_404(client):
+    assert client.post("/api/profiles/9999/posts", json={"title": "x"}).status_code == 404
+
+
+# ── Avatar (validation paths that don't require S3) ───────────────────────────
+def test_avatar_requires_file(client):
+    pid = client.post("/api/profiles", json={"username": "erin"}).get_json()["id"]
+    # No file field → 400, before any S3 interaction
+    assert client.post(f"/api/profiles/{pid}/avatar").status_code == 400
+
+
+def test_avatar_on_missing_profile_404(client):
+    assert client.post("/api/profiles/9999/avatar").status_code == 404

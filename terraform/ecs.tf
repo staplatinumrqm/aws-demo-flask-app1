@@ -45,6 +45,8 @@ resource "aws_ecs_task_definition" "app" {
         { name = "DB_HOST", value = module.database.db_address },
         { name = "DB_PORT", value = "5432" },
         { name = "DB_NAME", value = var.db_name },
+        { name = "AVATAR_BUCKET", value = aws_s3_bucket.avatars.bucket },
+        { name = "AWS_DEFAULT_REGION", value = var.aws_region },
       ]
 
       # Credentials pulled from the RDS-managed Secrets Manager secret at launch
