@@ -1,42 +1,70 @@
 # Flask on AWS ECS Fargate — Production-Style DevOps Platform
 
-A containerized Flask REST API deployed to AWS with a full DevOps platform around it:
-infrastructure as code, automated CI/CD with security gates, blue/green deployments,
-observability, autoscaling, and remote Terraform state — all provisioned with Terraform
-and shipped through GitHub Actions using OIDC (no long-lived AWS keys).
+[![CI/CD](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/deploy.yml/badge.svg)](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/deploy.yml)
+[![Terraform CI](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/terraform-ci.yml)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![Terraform](https://img.shields.io/badge/terraform-1.9-7B42BC)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-> Demonstrates: AWS (ECS Fargate, ALB, RDS, CodeDeploy, ECR, IAM, CloudWatch, Secrets
-> Manager), Terraform, GitHub Actions CI/CD, container security scanning, blue/green
-> deployments, and load-tested autoscaling.
+A containerized Flask web app + REST API deployed to AWS with a full DevOps platform
+around it: infrastructure as code, automated CI/CD with security gates, blue/green
+deployments, observability, autoscaling, federated **Sign in with Google** (Cognito),
+and remote Terraform state — all provisioned with Terraform and shipped through GitHub
+Actions using OIDC (no long-lived AWS keys).
+
+**🔗 Live demo:** https://cxg56eg1y2.execute-api.us-east-1.amazonaws.com
+
+> Demonstrates: AWS (ECS Fargate, ALB, API Gateway, RDS, Cognito, CodeDeploy, ECR, IAM,
+> CloudWatch, S3, Secrets Manager), Terraform modules + remote state, GitHub Actions
+> CI/CD, container + IaC security scanning, blue/green deployments, load-tested
+> autoscaling, and OIDC-federated authentication.
 
 ---
 
 ## Architecture
 
-```
-                              Internet
-                                 │  HTTP :80 (prod)  :8080 (test)
-                                 ▼
-                        ┌────────────────────┐
-                        │  Application LB     │
-                        └────────────────────┘
-                          │ blue TG  │ green TG     ← CodeDeploy shifts traffic
-                          ▼          ▼
-                        ┌────────────────────┐      ECS SG: :5000 only from ALB SG
-                        │  ECS Fargate tasks  │  ◄── autoscale 1→4 on CPU/memory
-                        │  (Flask + gunicorn) │
-                        └────────────────────┘
-              pulls image │      SQL :5432 │        │ avatars (task role)
-                          ▼                ▼        ▼
-                ┌──────────────┐  ┌────────────────┐  ┌──────────────┐
-                │  Amazon ECR  │  │ RDS PostgreSQL │  │  S3 (private) │
-                └──────────────┘  └────────────────┘  └──────────────┘
-                                          ▲
-                                   creds from Secrets Manager
+```mermaid
+flowchart TB
+    user(["User / Browser"])
+    gha["GitHub Actions<br/>(OIDC, no keys)"]
+
+    subgraph aws["AWS"]
+        apigw["API Gateway<br/>(free HTTPS)"]
+        alb["Application LB<br/>blue / green"]
+        subgraph ecs["ECS Fargate (autoscale 1→4)"]
+            app["Flask + gunicorn"]
+        end
+        ecr[("ECR")]
+        rds[("RDS Postgres<br/>private subnets")]
+        s3[("S3<br/>avatars, private")]
+        cognito["Cognito<br/>+ Google IdP"]
+        sm["Secrets Manager"]
+        obs["CloudWatch<br/>alarms + SNS"]
+    end
+
+    user -->|HTTPS| apigw --> alb --> app
+    user -->|Sign in with Google| cognito --> app
+    app -->|SQL| rds
+    app -->|avatars via task role| s3
+    sm -.->|DB + app secrets| app
+    app -.-> obs
+    gha -->|build · scan · push| ecr
+    gha -->|CodeDeploy blue/green| app
+    ecr --> app
 ```
 
 All resources live in a single VPC: public subnets for the ALB and tasks, private
 subnets for RDS. CloudWatch alarms feed an SNS topic and drive CodeDeploy auto-rollback.
+
+## Demo
+
+<!-- Record a short GIF of: sign in with Google → profile → upload picture → write a post,
+     save it to docs/demo.gif, then uncomment the line below. -->
+<!-- ![demo](docs/demo.gif) -->
+
+1. Open the live demo, click **Sign in with Google**.
+2. A profile is created from your Google identity; upload a picture and write a post.
+3. Browse other profiles read-only — write actions are gated to the signed-in owner.
 
 ---
 
@@ -139,6 +167,25 @@ relocated in state with **zero** infrastructure changes.
 
 ---
 
+## Architecture decisions
+
+| Decision | Why |
+|----------|-----|
+| **ECS Fargate** (not EKS/EC2) | No cluster/node ops; right-sized for one service; pay-per-task. EKS would be over-engineering here. |
+| **Blue/green via CodeDeploy** | Zero-downtime deploys with instant, automatic rollback on a CloudWatch 5xx alarm — safer than rolling updates. |
+| **API Gateway for HTTPS** (not CloudFront) | CloudFront is gated on this unverified AWS account; API Gateway gives a free, valid HTTPS endpoint and works as the Cognito callback. Documented as a trade-off, not an oversight. |
+| **Cognito + Google federation** | Managed auth (no password storage); free tier covers 50k users; the hosted UI removes the need to build/secure a login form. |
+| **GitHub OIDC** (no static keys) | Short-lived credentials per run; deploy role scoped to `main`, plan role read-only — least privilege. |
+| **Secrets in Secrets Manager** | DB + app secrets injected into the task at launch; never in code, image, or Terraform state. |
+| **Public subnets + task role for S3** | Avoids a paid NAT gateway; RDS stays private; S3 access uses the task role (no keys). |
+| **Trivy gate on CRITICAL only** | Blocks merges/deploys on critical findings while accepted risks (HTTP-only, egress) are documented in [`.trivyignore`](.trivyignore). |
+
+## Operations
+
+See the [runbook](docs/RUNBOOK.md) for rollback, scaling, secret rotation, and incident steps.
+
+---
+
 ## Getting started
 
 ### Prerequisites
@@ -174,4 +221,8 @@ See [`loadtest/README.md`](loadtest/README.md).
 - [x] Autoscaling (load-tested)
 - [x] RDS Postgres + functional CRUD API (Secrets Manager)
 - [x] Refactor Terraform into reusable modules (`networking`, `database`)
-- [ ] HTTPS via ACM + custom domain
+- [x] Server-rendered web frontend (feed, profiles, posts, photo upload)
+- [x] Free HTTPS via API Gateway
+- [x] Sign in with Google via Cognito (federated, session-based)
+- [ ] Multi-environment (dev/staging/prod) with Terraform workspaces
+- [ ] Distributed tracing (X-Ray / OpenTelemetry)
