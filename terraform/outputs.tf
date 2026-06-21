@@ -62,3 +62,8 @@ output "app_https_url" {
   description = "Public HTTPS URL (API Gateway) — use this instead of the HTTP ALB"
   value       = aws_apigatewayv2_api.app.api_endpoint
 }
+
+output "environment" {
+  description = "Logical environment for the selected workspace (prod / dev / ...)"
+  value       = local.environment
+}
