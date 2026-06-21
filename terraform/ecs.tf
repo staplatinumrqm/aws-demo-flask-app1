@@ -1,25 +1,25 @@
 resource "aws_cloudwatch_log_group" "ecs" {
-  name              = "/ecs/${var.app_name}"
+  name              = "/ecs/${local.name}"
   retention_in_days = 30
 
-  tags = { Name = "${var.app_name}-logs" }
+  tags = { Name = "${local.name}-logs" }
 }
 
 resource "aws_ecs_cluster" "main" {
-  name = var.app_name
+  name = local.name
 
   setting {
     name  = "containerInsights"
     value = "enabled"
   }
 
-  tags = { Name = var.app_name }
+  tags = { Name = local.name }
 }
 
 # Initial task definition using a public placeholder image.
 # The pipeline replaces this on the first successful run via CodeDeploy.
 resource "aws_ecs_task_definition" "app" {
-  family                   = var.app_name
+  family                   = local.name
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = var.task_cpu
@@ -72,11 +72,11 @@ resource "aws_ecs_task_definition" "app" {
     }
   ])
 
-  tags = { Name = var.app_name }
+  tags = { Name = local.name }
 }
 
 resource "aws_ecs_service" "app" {
-  name            = var.app_name
+  name            = local.name
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
@@ -105,5 +105,5 @@ resource "aws_ecs_service" "app" {
     ignore_changes = [task_definition, load_balancer, desired_count]
   }
 
-  tags = { Name = var.app_name }
+  tags = { Name = local.name }
 }

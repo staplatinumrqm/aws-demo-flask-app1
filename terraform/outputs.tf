@@ -24,13 +24,13 @@ output "ecs_service" {
 }
 
 output "github_actions_role_arn" {
-  description = "IMPORTANT: add this value as the AWS_ROLE_ARN secret in your GitHub repo settings"
-  value       = aws_iam_role.github_actions.arn
+  description = "IMPORTANT: add this value as the AWS_ROLE_ARN secret in your GitHub repo settings (production workspace only)"
+  value       = one(aws_iam_role.github_actions[*].arn)
 }
 
 output "terraform_plan_role_arn" {
-  description = "IMPORTANT: add this value as the AWS_PLAN_ROLE_ARN secret in your GitHub repo settings (read-only, for plan-on-PR)"
-  value       = aws_iam_role.terraform_plan.arn
+  description = "IMPORTANT: add this value as the AWS_PLAN_ROLE_ARN secret in your GitHub repo settings (read-only, production workspace only)"
+  value       = one(aws_iam_role.terraform_plan[*].arn)
 }
 
 output "dashboard_url" {
@@ -61,4 +61,9 @@ output "avatar_bucket" {
 output "app_https_url" {
   description = "Public HTTPS URL (API Gateway) — use this instead of the HTTP ALB"
   value       = aws_apigatewayv2_api.app.api_endpoint
+}
+
+output "environment" {
+  description = "Logical environment for the selected workspace (prod / dev / ...)"
+  value       = local.environment
 }

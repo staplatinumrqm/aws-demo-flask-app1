@@ -1,12 +1,12 @@
 resource "aws_ecr_repository" "app" {
-  name                 = var.app_name
+  name                 = local.name
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
   }
 
-  tags = { Name = var.app_name }
+  tags = { Name = local.name }
 }
 
 resource "aws_ecr_lifecycle_policy" "app" {

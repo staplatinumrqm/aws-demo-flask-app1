@@ -48,6 +48,11 @@ jobs:
     name: Build, Push & Deploy
     needs: test
     runs-on: ubuntu-latest
+    # Gated promotion: this job waits for manual approval via the GitHub
+    # "production" environment before it builds, pushes, and deploys.
+    environment:
+      name: production
+      url: https://cxg56eg1y2.execute-api.us-east-1.amazonaws.com
 
     steps:
       - uses: actions/checkout@v4

@@ -2,7 +2,7 @@
 # Allows the ECS agent to pull images from ECR and write logs to CloudWatch.
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.app_name}-ecs-task-execution"
+  name = "${local.name}-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -23,7 +23,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 # Permissions the Flask application itself has at runtime (minimal by default).
 
 resource "aws_iam_role" "ecs_task" {
-  name = "${var.app_name}-ecs-task"
+  name = "${local.name}-ecs-task"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -38,7 +38,7 @@ resource "aws_iam_role" "ecs_task" {
 # ── CodeDeploy Role ───────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "codedeploy" {
-  name = "${var.app_name}-codedeploy"
+  name = "${local.name}-codedeploy"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

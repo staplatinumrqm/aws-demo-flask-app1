@@ -1,15 +1,15 @@
 resource "aws_lb" "main" {
-  name               = "${var.app_name}-alb"
+  name               = "${local.name}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [module.networking.alb_sg_id]
   subnets            = module.networking.public_subnet_ids
 
-  tags = { Name = "${var.app_name}-alb" }
+  tags = { Name = "${local.name}-alb" }
 }
 
 resource "aws_lb_target_group" "blue" {
-  name        = "${var.app_name}-blue"
+  name        = "${local.name}-blue"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = module.networking.vpc_id
@@ -24,11 +24,11 @@ resource "aws_lb_target_group" "blue" {
     matcher             = "200"
   }
 
-  tags = { Name = "${var.app_name}-blue" }
+  tags = { Name = "${local.name}-blue" }
 }
 
 resource "aws_lb_target_group" "green" {
-  name        = "${var.app_name}-green"
+  name        = "${local.name}-green"
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = module.networking.vpc_id
@@ -43,7 +43,7 @@ resource "aws_lb_target_group" "green" {
     matcher             = "200"
   }
 
-  tags = { Name = "${var.app_name}-green" }
+  tags = { Name = "${local.name}-green" }
 }
 
 # Production listener: serves live traffic, starts pointing at blue

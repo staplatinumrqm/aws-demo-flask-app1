@@ -1,5 +1,5 @@
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
-  alarm_name          = "${var.app_name}-alb-5xx-errors"
+  alarm_name          = "${local.name}-alb-5xx-errors"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 2
   metric_name         = "HTTPCode_ELB_5XX_Count"
@@ -18,5 +18,5 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
 
-  tags = { Name = "${var.app_name}-5xx-alarm" }
+  tags = { Name = "${local.name}-5xx-alarm" }
 }

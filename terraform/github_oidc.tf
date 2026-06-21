@@ -1,6 +1,9 @@
 # GitHub OIDC — lets GitHub Actions assume an AWS IAM role without storing
-# long-lived access keys. The trust is scoped to this specific repo/branch.
+# long-lived access keys. Account-wide CI resources: created only in the default
+# (production) workspace; other environments reuse them.
+
 resource "aws_iam_openid_connect_provider" "github" {
+  count          = local.is_shared ? 1 : 0
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
 
@@ -13,7 +16,8 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name = "${var.app_name}-github-actions"
+  count = local.is_shared ? 1 : 0
+  name  = "${local.name}-github-actions"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -21,7 +25,7 @@ resource "aws_iam_role" "github_actions" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+          Federated = aws_iam_openid_connect_provider.github[0].arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -37,8 +41,9 @@ resource "aws_iam_role" "github_actions" {
 }
 
 resource "aws_iam_role_policy" "github_actions" {
-  name = "${var.app_name}-github-actions-policy"
-  role = aws_iam_role.github_actions.id
+  count = local.is_shared ? 1 : 0
+  name  = "${local.name}-github-actions-policy"
+  role  = aws_iam_role.github_actions[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -99,4 +104,19 @@ resource "aws_iam_role_policy" "github_actions" {
       }
     ]
   })
+}
+
+# Adding count changes the resource address; tell Terraform these moved so the
+# production workspace updates in place instead of recreating them.
+moved {
+  from = aws_iam_openid_connect_provider.github
+  to   = aws_iam_openid_connect_provider.github[0]
+}
+moved {
+  from = aws_iam_role.github_actions
+  to   = aws_iam_role.github_actions[0]
+}
+moved {
+  from = aws_iam_role_policy.github_actions
+  to   = aws_iam_role_policy.github_actions[0]
 }
