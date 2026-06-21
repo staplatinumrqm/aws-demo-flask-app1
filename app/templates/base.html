@@ -7,7 +7,18 @@
     <style>
         :root { --bg:#f4f6f9; --card:#fff; --ink:#2c3e50; --muted:#8a96a3; --brand:#4263eb; --green:#2ecc71; --red:#e74c3c; }
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); margin: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: var(--ink); margin: 0; min-height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientShift 18s ease infinite;
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
         a { color: var(--brand); text-decoration: none; }
         .nav { display: flex; align-items: center; justify-content: space-between; background: var(--card); padding: 0.9rem 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
         .brand { font-weight: 700; font-size: 1.1rem; color: var(--ink); }
