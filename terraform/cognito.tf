@@ -3,7 +3,7 @@
 # Google is added as a federated identity provider once its OAuth client exists.
 
 resource "aws_cognito_user_pool" "main" {
-  name = "${var.app_name}-users"
+  name = "${local.name}-users"
 
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
@@ -15,11 +15,11 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  tags = { Name = "${var.app_name}-users" }
+  tags = { Name = "${local.name}-users" }
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${var.app_name}-${data.aws_caller_identity.current.account_id}"
+  domain       = "${local.name}-${data.aws_caller_identity.current.account_id}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
@@ -59,7 +59,7 @@ resource "aws_cognito_identity_provider" "google" {
 
 # App client used by the Flask app for the Authorization Code flow via the hosted UI.
 resource "aws_cognito_user_pool_client" "web" {
-  name         = "${var.app_name}-web"
+  name         = "${local.name}-web"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret                      = true
@@ -83,7 +83,7 @@ resource "random_password" "flask_secret" {
 }
 
 resource "aws_secretsmanager_secret" "app" {
-  name = "${var.app_name}-app-config"
+  name = "${local.name}-app-config"
 }
 
 resource "aws_secretsmanager_secret_version" "app" {
@@ -101,7 +101,7 @@ output "cognito_client_id" {
 
 # Let the ECS task execution role read the app-config secret.
 resource "aws_iam_role_policy" "ecs_execution_app_secret" {
-  name = "${var.app_name}-read-app-secret"
+  name = "${local.name}-read-app-secret"
   role = aws_iam_role.ecs_task_execution.id
 
   policy = jsonencode({

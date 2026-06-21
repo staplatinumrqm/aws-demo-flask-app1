@@ -1,11 +1,11 @@
 resource "aws_codedeploy_app" "app" {
-  name             = var.app_name
+  name             = local.name
   compute_platform = "ECS"
 }
 
 resource "aws_codedeploy_deployment_group" "app" {
   app_name              = aws_codedeploy_app.app.name
-  deployment_group_name = "${var.app_name}-dg"
+  deployment_group_name = "${local.name}-dg"
   service_role_arn      = aws_iam_role.codedeploy.arn
 
   # ECSAllAtOnce: shifts all traffic to green immediately after health checks pass.

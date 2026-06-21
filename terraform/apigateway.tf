@@ -6,10 +6,10 @@
 # gateway routes are intentionally open ($default, authorization NONE).
 
 resource "aws_apigatewayv2_api" "app" {
-  name          = "${var.app_name}-http"
+  name          = "${local.name}-http"
   protocol_type = "HTTP"
 
-  tags = { Name = "${var.app_name}-http-api" }
+  tags = { Name = "${local.name}-http-api" }
 }
 
 resource "aws_apigatewayv2_integration" "alb" {
@@ -33,5 +33,5 @@ resource "aws_apigatewayv2_stage" "default" {
   name        = "$default"
   auto_deploy = true
 
-  tags = { Name = "${var.app_name}-http-stage" }
+  tags = { Name = "${local.name}-http-stage" }
 }

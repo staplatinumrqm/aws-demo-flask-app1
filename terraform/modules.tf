@@ -5,14 +5,14 @@
 
 module "networking" {
   source         = "./modules/networking"
-  app_name       = var.app_name
+  app_name       = local.name
   azs            = data.aws_availability_zones.available.names
   container_port = var.container_port
 }
 
 module "database" {
   source               = "./modules/database"
-  app_name             = var.app_name
+  app_name             = local.name
   private_subnet_ids   = module.networking.private_subnet_ids
   rds_sg_id            = module.networking.rds_sg_id
   execution_role_id    = aws_iam_role.ecs_task_execution.id

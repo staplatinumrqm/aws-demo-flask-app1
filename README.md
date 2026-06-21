@@ -180,6 +180,23 @@ relocated in state with **zero** infrastructure changes.
 | **Public subnets + task role for S3** | Avoids a paid NAT gateway; RDS stays private; S3 access uses the task role (no keys). |
 | **Trivy gate on CRITICAL only** | Blocks merges/deploys on critical findings while accepted risks (HTTP-only, egress) are documented in [`.trivyignore`](.trivyignore). |
 
+## Multi-environment
+
+Environments are **Terraform workspaces** — one codebase, isolated state and resources
+per environment (see [`terraform/environments/`](terraform/environments/)):
+
+| Workspace | Name prefix | Notes |
+|-----------|-------------|-------|
+| `default` | `flask-pipeline`     | Production (the live stack) |
+| `dev`     | `flask-pipeline-dev` | On-demand parallel stack (own VPC/ALB/ECS/RDS/S3/Cognito) |
+
+Account-wide resources (GitHub OIDC provider + CI roles) exist only in `default` and are
+reused everywhere. The refactor used `moved` blocks, so adding multi-env support was a
+**zero-change** plan against production.
+
+**Gated promotion:** the deploy job runs in a GitHub **`production` environment** that
+requires manual approval before it ships — a one-click promotion gate.
+
 ## Operations
 
 See the [runbook](docs/RUNBOOK.md) for rollback, scaling, secret rotation, and incident steps.
@@ -224,5 +241,5 @@ See [`loadtest/README.md`](loadtest/README.md).
 - [x] Server-rendered web frontend (feed, profiles, posts, photo upload)
 - [x] Free HTTPS via API Gateway
 - [x] Sign in with Google via Cognito (federated, session-based)
-- [ ] Multi-environment (dev/staging/prod) with Terraform workspaces
+- [x] Multi-environment via Terraform workspaces + gated production deploys
 - [ ] Distributed tracing (X-Ray / OpenTelemetry)

@@ -1,16 +1,16 @@
 # Read-only role for `terraform plan` on pull requests (GitOps preview).
-# Separate from the deploy role: this one is read-only and assumable from PRs,
-# the deploy role is write-capable and locked to the main branch only.
+# Account-wide: created only in the default (production) workspace.
 
 resource "aws_iam_role" "terraform_plan" {
-  name = "${var.app_name}-github-terraform-plan"
+  count = local.is_shared ? 1 : 0
+  name  = "${local.name}-github-terraform-plan"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect    = "Allow"
-        Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+        Principal = { Federated = aws_iam_openid_connect_provider.github[0].arn }
         Action    = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
@@ -31,15 +31,17 @@ resource "aws_iam_role" "terraform_plan" {
 
 # Broad read access so `terraform plan` can refresh state against live resources.
 resource "aws_iam_role_policy_attachment" "terraform_plan_readonly" {
-  role       = aws_iam_role.terraform_plan.name
+  count      = local.is_shared ? 1 : 0
+  role       = aws_iam_role.terraform_plan[0].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
 # State backend access: read the state object and acquire/release the lock.
 # (ReadOnlyAccess covers GetObject/GetItem but not the lock's Put/Delete.)
 resource "aws_iam_role_policy" "terraform_plan_state" {
-  name = "${var.app_name}-terraform-plan-state"
-  role = aws_iam_role.terraform_plan.id
+  count = local.is_shared ? 1 : 0
+  name  = "${local.name}-terraform-plan-state"
+  role  = aws_iam_role.terraform_plan[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -66,4 +68,17 @@ resource "aws_iam_role_policy" "terraform_plan_state" {
       }
     ]
   })
+}
+
+moved {
+  from = aws_iam_role.terraform_plan
+  to   = aws_iam_role.terraform_plan[0]
+}
+moved {
+  from = aws_iam_role_policy_attachment.terraform_plan_readonly
+  to   = aws_iam_role_policy_attachment.terraform_plan_readonly[0]
+}
+moved {
+  from = aws_iam_role_policy.terraform_plan_state
+  to   = aws_iam_role_policy.terraform_plan_state[0]
 }

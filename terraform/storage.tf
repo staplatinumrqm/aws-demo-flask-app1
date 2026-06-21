@@ -4,8 +4,8 @@
 # private (objects are streamed back through the app, not served publicly).
 
 resource "aws_s3_bucket" "avatars" {
-  bucket = "${var.app_name}-avatars-${data.aws_caller_identity.current.account_id}"
-  tags   = { Name = "${var.app_name}-avatars" }
+  bucket = "${local.name}-avatars-${data.aws_caller_identity.current.account_id}"
+  tags   = { Name = "${local.name}-avatars" }
 }
 
 resource "aws_s3_bucket_public_access_block" "avatars" {
@@ -27,7 +27,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "avatars" {
 
 # Grant the ECS task role read/write access to the avatar bucket only.
 resource "aws_iam_role_policy" "ecs_task_s3" {
-  name = "${var.app_name}-task-s3-avatars"
+  name = "${local.name}-task-s3-avatars"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({

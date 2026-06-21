@@ -3,8 +3,8 @@
 # created only when var.alarm_email is set (confirm the link AWS emails you).
 
 resource "aws_sns_topic" "alerts" {
-  name = "${var.app_name}-alerts"
-  tags = { Name = "${var.app_name}-alerts" }
+  name = "${local.name}-alerts"
+  tags = { Name = "${local.name}-alerts" }
 }
 
 resource "aws_sns_topic_subscription" "email" {
@@ -18,7 +18,7 @@ resource "aws_sns_topic_subscription" "email" {
 # Target-group 5xx: the app itself returning server errors (distinct from the
 # ALB-level 5xx in cloudwatch.tf, which also drives CodeDeploy rollback).
 resource "aws_cloudwatch_metric_alarm" "target_5xx" {
-  alarm_name          = "${var.app_name}-target-5xx"
+  alarm_name          = "${local.name}-target-5xx"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 2
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -33,12 +33,12 @@ resource "aws_cloudwatch_metric_alarm" "target_5xx" {
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
-  tags          = { Name = "${var.app_name}-target-5xx" }
+  tags          = { Name = "${local.name}-target-5xx" }
 }
 
 # p95 latency — catches slow responses before users complain.
 resource "aws_cloudwatch_metric_alarm" "p95_latency" {
-  alarm_name          = "${var.app_name}-p95-latency"
+  alarm_name          = "${local.name}-p95-latency"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "TargetResponseTime"
@@ -53,12 +53,12 @@ resource "aws_cloudwatch_metric_alarm" "p95_latency" {
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
-  tags          = { Name = "${var.app_name}-p95-latency" }
+  tags          = { Name = "${local.name}-p95-latency" }
 }
 
 # ECS service CPU saturation.
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu_high" {
-  alarm_name          = "${var.app_name}-ecs-cpu-high"
+  alarm_name          = "${local.name}-ecs-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "CPUUtilization"
@@ -76,12 +76,12 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu_high" {
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
-  tags          = { Name = "${var.app_name}-ecs-cpu-high" }
+  tags          = { Name = "${local.name}-ecs-cpu-high" }
 }
 
 # ECS service memory saturation.
 resource "aws_cloudwatch_metric_alarm" "ecs_memory_high" {
-  alarm_name          = "${var.app_name}-ecs-memory-high"
+  alarm_name          = "${local.name}-ecs-memory-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "MemoryUtilization"
@@ -99,12 +99,12 @@ resource "aws_cloudwatch_metric_alarm" "ecs_memory_high" {
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
-  tags          = { Name = "${var.app_name}-ecs-memory-high" }
+  tags          = { Name = "${local.name}-ecs-memory-high" }
 }
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = var.app_name
+  dashboard_name = local.name
 
   dashboard_body = jsonencode({
     widgets = [
