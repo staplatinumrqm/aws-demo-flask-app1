@@ -32,7 +32,7 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -55,7 +55,7 @@ jobs:
       url: https://cxg56eg1y2.execute-api.us-east-1.amazonaws.com
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure AWS credentials (OIDC — no static keys)
         uses: aws-actions/configure-aws-credentials@v4

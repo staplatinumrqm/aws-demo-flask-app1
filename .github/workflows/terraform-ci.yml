@@ -22,7 +22,7 @@ jobs:
     name: Format & Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -42,7 +42,7 @@ jobs:
     name: TFLint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: terraform-linters/setup-tflint@v4
         with:
@@ -60,7 +60,7 @@ jobs:
     name: Trivy IaC Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Informational: surface HIGH (and CRITICAL) findings in the log for triage.
       # Does not block — some HIGH findings here are accepted (e.g. public HTTP on
