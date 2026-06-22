@@ -50,6 +50,9 @@ resource "aws_ecs_task_definition" "app" {
         { name = "APP_BASE_URL", value = aws_apigatewayv2_api.app.api_endpoint },
         { name = "COGNITO_DOMAIN", value = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com" },
         { name = "COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
+        { name = "ENABLE_XRAY", value = "true" },
+        { name = "XRAY_SERVICE_NAME", value = local.name },
+        { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
       ]
 
       # Secrets pulled from Secrets Manager at launch (specific JSON keys), so
@@ -67,6 +70,31 @@ resource "aws_ecs_task_definition" "app" {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
+        }
+      }
+    },
+    {
+      # X-Ray daemon sidecar — the app sends trace segments to it over UDP 2000
+      # (shared localhost on Fargate); it forwards them to the X-Ray service.
+      name              = "xray-daemon"
+      image             = "public.ecr.aws/xray/aws-xray-daemon:latest"
+      essential         = false
+      cpu               = 32
+      memoryReservation = 64
+
+      portMappings = [
+        {
+          containerPort = 2000
+          protocol      = "udp"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "xray"
         }
       }
     }

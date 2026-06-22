@@ -177,7 +177,23 @@ def create_app(test_config=None):
     _register_auth_routes(app)
     _register_web_routes(app)
     _register_api_routes(app)
+
+    if os.environ.get("ENABLE_XRAY", "").lower() == "true":
+        _configure_xray(app)
     return app
+
+
+def _configure_xray(app):
+    # Lazy import so tests / local runs don't need the SDK installed.
+    from aws_xray_sdk.core import patch_all, xray_recorder
+    from aws_xray_sdk.ext.flask.middleware import XRayMiddleware
+
+    xray_recorder.configure(
+        service=os.environ.get("XRAY_SERVICE_NAME", "flask-pipeline"),
+        context_missing="LOG_ERROR",  # log instead of raising when outside a request
+    )
+    XRayMiddleware(app, xray_recorder)
+    patch_all()  # auto-trace psycopg2 (DB), botocore (S3), and requests (Cognito)
 
 
 def _create_profile_for_login(email, name):
