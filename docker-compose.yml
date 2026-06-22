@@ -94,6 +94,10 @@ services:
     build: .
     # Override the gunicorn entrypoint to run the consumer instead.
     entrypoint: ["python", "-u", "worker.py"]
+    # The image's HEALTHCHECK curls :5000 (the web server) — N/A for a queue
+    # consumer, so disable it here to avoid a misleading "unhealthy" status.
+    healthcheck:
+      disable: true
     environment:
       <<: *app-env
     depends_on:
