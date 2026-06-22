@@ -82,7 +82,7 @@ subnets for RDS. CloudWatch alarms feed an SNS topic and drive CodeDeploy auto-r
 | CI/CD | GitHub Actions + OIDC |
 | IaC | Terraform (S3 + DynamoDB remote state) |
 | Security | Trivy (image + IaC), least-privilege IAM, Dependabot |
-| Observability | CloudWatch dashboards, alarms, SNS alerts |
+| Observability | CloudWatch dashboards, alarms, SNS alerts, AWS X-Ray tracing |
 | Autoscaling | Application Auto Scaling (target tracking) |
 
 ---
@@ -143,6 +143,9 @@ if the CloudWatch 5xx alarm trips.
   ECS CPU, ECS memory.
 - **Autoscaling**: target-tracking on CPU (60%) and memory (70%), 1–4 tasks. Verified
   under load — see [`loadtest/`](loadtest/).
+- **Distributed tracing**: AWS X-Ray via a daemon sidecar + `aws-xray-sdk`. Each request
+  trace includes auto-captured subsegments for **RDS queries** and **S3 calls**, so the
+  X-Ray service map shows the full app → Postgres / S3 dependency graph.
 
 ---
 
@@ -242,4 +245,4 @@ See [`loadtest/README.md`](loadtest/README.md).
 - [x] Free HTTPS via API Gateway
 - [x] Sign in with Google via Cognito (federated, session-based)
 - [x] Multi-environment via Terraform workspaces + gated production deploys
-- [ ] Distributed tracing (X-Ray / OpenTelemetry)
+- [x] Distributed tracing with AWS X-Ray (DB + S3 subsegments)
