@@ -1,7 +1,7 @@
 # Flask on AWS ECS Fargate — Production-Style DevOps Platform
 
-[![CI/CD](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/deploy.yml/badge.svg)](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/deploy.yml)
-[![Terraform CI](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/staplatinumrqm/aws-demo-flask-app1/actions/workflows/terraform-ci.yml)
+[![CI/CD](https://github.com/maximcapsa/aws-demo-flask-app1/actions/workflows/deploy.yml/badge.svg)](https://github.com/maximcapsa/aws-demo-flask-app1/actions/workflows/deploy.yml)
+[![Terraform CI](https://github.com/maximcapsa/aws-demo-flask-app1/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/maximcapsa/aws-demo-flask-app1/actions/workflows/terraform-ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![Terraform](https://img.shields.io/badge/terraform-1.9-7B42BC)
 ![License](https://img.shields.io/badge/license-MIT-green)
