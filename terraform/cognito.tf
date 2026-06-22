@@ -82,6 +82,14 @@ resource "random_password" "flask_secret" {
   special = false
 }
 
+# RabbitMQ broker credential. Generated unconditionally (it costs nothing) so the
+# RABBITMQ_PASSWORD key always exists in the secret — the app/worker task
+# definitions can reference it whether or not messaging is currently enabled.
+resource "random_password" "rabbitmq" {
+  length  = 32
+  special = false
+}
+
 resource "aws_secretsmanager_secret" "app" {
   name = "${local.name}-app-config"
 }
@@ -91,6 +99,7 @@ resource "aws_secretsmanager_secret_version" "app" {
   secret_string = jsonencode({
     SECRET_KEY            = random_password.flask_secret.result
     COGNITO_CLIENT_SECRET = aws_cognito_user_pool_client.web.client_secret
+    RABBITMQ_PASSWORD     = random_password.rabbitmq.result
   })
 }
 

@@ -34,6 +34,8 @@ flowchart TB
         subgraph ecs["ECS Fargate (autoscale 1→4)"]
             app["Flask + gunicorn"]
         end
+        mq["RabbitMQ<br/>(Fargate, on-demand)"]
+        worker["Thumbnail worker<br/>(Fargate)"]
         ecr[("ECR")]
         rds[("RDS Postgres<br/>private subnets")]
         s3[("S3<br/>avatars, private")]
@@ -46,6 +48,9 @@ flowchart TB
     user -->|Sign in with Google| cognito --> app
     app -->|SQL| rds
     app -->|avatars via task role| s3
+    app -->|publish avatar job| mq --> worker
+    worker -->|thumbnail| s3
+    worker -->|update| rds
     sm -.->|DB + app secrets| app
     app -.-> obs
     gha -->|build · scan · push| ecr
@@ -77,6 +82,7 @@ subnets for RDS. CloudWatch alarms feed an SNS topic and drive CodeDeploy auto-r
 | Object storage | Amazon S3 (private bucket for profile pictures, task-role access) |
 | Container | Docker (multi-stage), Amazon ECR (scan-on-push) |
 | Compute | Amazon ECS Fargate |
+| Messaging | Self-hosted RabbitMQ (Fargate) + background thumbnail worker, Cloud Map service discovery |
 | Networking | VPC, public/private subnets, ALB, security groups |
 | Deployment | AWS CodeDeploy (blue/green) |
 | CI/CD | GitHub Actions + OIDC |
@@ -135,6 +141,31 @@ if the CloudWatch 5xx alarm trips.
 
 ---
 
+## Async processing (RabbitMQ)
+
+Avatar uploads are processed off the request path. When a user uploads a profile
+picture, the app stores the original in S3 and **publishes a job to RabbitMQ**; a
+separate **worker service** consumes it, generates a 128×128 thumbnail with Pillow,
+writes it back to S3, and sets `Profile.thumbnail_key`. The feed then serves the
+lightweight thumbnail (`?size=thumb`).
+
+```
+Flask (producer) ──amqp──▶ RabbitMQ ──▶ worker (consumer)
+                                          └─ S3 download → Pillow thumbnail → S3 upload → DB update
+```
+
+- **Decoupled & resilient** — publishing is best-effort: if the broker is down the
+  upload still succeeds, the user just keeps the full-size image until processing
+  catches up. The worker acks a message only after the thumbnail is committed, so a
+  crash mid-job re-queues the work; `prefetch_count=1` lets you scale to N workers.
+- **Self-hosted, on-demand** — the broker (`rabbitmq:3.13`) and worker run as two
+  Fargate tasks discovered via **Cloud Map** (`rabbitmq.<name>.local`), gated behind
+  `enable_messaging` (default **off**, so the baseline cost stays $0 — flip it on to
+  demo, off to tear it down).
+- **Run it locally** — [`docker-compose.yml`](docker-compose.yml) brings up the whole
+  pipeline offline (RabbitMQ + Postgres + **MinIO** standing in for S3), so you can
+  watch a thumbnail appear without touching AWS.
+
 ## Observability & autoscaling
 
 - **Dashboard**: ALB request count / HTTP codes / latency percentiles, ECS CPU & memory,
@@ -152,15 +183,16 @@ if the CloudWatch 5xx alarm trips.
 ## Repository layout
 
 ```
-app/                 Flask application (+ entrypoint, templates)
+app/                 Flask application (+ entrypoint, templates, worker.py)
 tests/               pytest suite (runs on SQLite — no DB needed in CI)
-terraform/           root config (ALB, ECS, CodeDeploy, IAM, observability)
+terraform/           root config (ALB, ECS, CodeDeploy, IAM, observability, messaging)
   modules/
     networking/      VPC, subnets, route tables, security groups
     database/        RDS Postgres, subnet group, secret access
 loadtest/            k6 script + dependency-free Python load generator
 .github/workflows/   CI/CD pipelines
 appspec.yaml         CodeDeploy ECS deployment spec
+docker-compose.yml   local RabbitMQ pipeline (Postgres + MinIO, no AWS needed)
 Dockerfile           multi-stage build
 ```
 
@@ -182,6 +214,7 @@ relocated in state with **zero** infrastructure changes.
 | **Secrets in Secrets Manager** | DB + app secrets injected into the task at launch; never in code, image, or Terraform state. |
 | **Public subnets + task role for S3** | Avoids a paid NAT gateway; RDS stays private; S3 access uses the task role (no keys). |
 | **Trivy gate on CRITICAL only** | Blocks merges/deploys on critical findings while accepted risks (HTTP-only, egress) are documented in [`.trivyignore`](.trivyignore). |
+| **RabbitMQ for async work** (self-hosted, not MSK/SQS) | The use case is a *task queue*, not event streaming — RabbitMQ fits, MSK (~$150/mo) would be over-engineering. Self-hosted on Fargate keeps it free-tier and is the broker most worth knowing; toggled on-demand so it costs $0 when idle. SQS would also work but learning a real broker (queues, acks, prefetch) was the goal. |
 
 ## Multi-environment
 
@@ -246,3 +279,4 @@ See [`loadtest/README.md`](loadtest/README.md).
 - [x] Sign in with Google via Cognito (federated, session-based)
 - [x] Multi-environment via Terraform workspaces + gated production deploys
 - [x] Distributed tracing with AWS X-Ray (DB + S3 subsegments)
+- [x] Async avatar processing with RabbitMQ (producer/worker, on-demand, local Docker Compose)

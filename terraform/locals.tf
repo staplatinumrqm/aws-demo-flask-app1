@@ -17,4 +17,11 @@ locals {
   # Account-wide CI/OIDC resources live only in the default workspace; other
   # environments reuse them (one OIDC provider + CI roles per account).
   is_shared = terraform.workspace == "default"
+
+  # Messaging: gate the RabbitMQ broker + worker behind a single flag. The app's
+  # RABBITMQ_HOST resolves to the broker's Cloud Map DNS when enabled, or is left
+  # empty so the producer no-ops instantly (no connect attempt) when disabled.
+  messaging_count = var.enable_messaging ? 1 : 0
+  rabbitmq_dns    = "rabbitmq.${local.name}.local"
+  rabbitmq_host   = var.enable_messaging ? local.rabbitmq_dns : ""
 }

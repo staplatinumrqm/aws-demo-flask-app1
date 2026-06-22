@@ -99,6 +99,19 @@ variable "db_allocated_storage" {
   default     = 20
 }
 
+# ── Messaging (RabbitMQ avatar-processing pipeline) ───────────────────────────
+variable "enable_messaging" {
+  description = "Provision the RabbitMQ broker + thumbnail worker (two extra Fargate tasks). Off by default to keep cost at $0; flip to true to run the async pipeline."
+  type        = bool
+  default     = false
+}
+
+variable "worker_count" {
+  description = "Number of thumbnail worker replicas (RabbitMQ round-robins jobs across them)."
+  type        = number
+  default     = 1
+}
+
 # ── Google OAuth (for Cognito federated login) ────────────────────────────────
 variable "google_client_id" {
   description = "Google OAuth 2.0 client ID (created in Google Cloud Console)"

@@ -27,6 +27,9 @@ db = SQLAlchemy()
 ALLOWED_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024  # 5 MB
 
+# Work queue the producer (Flask) publishes to and the worker consumes from.
+AVATAR_QUEUE = "avatar_jobs"
+
 
 class Item(db.Model):
     __tablename__ = "items"
@@ -53,6 +56,9 @@ class Profile(db.Model):
     display_name = db.Column(db.String(120), nullable=False, default="")
     bio = db.Column(db.Text, nullable=False, default="")
     avatar_key = db.Column(db.String(256))
+    # Set asynchronously by the worker once it has generated a thumbnail from the
+    # original upload. Stays NULL until the avatar_jobs message is processed.
+    thumbnail_key = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     posts = db.relationship(
@@ -67,6 +73,8 @@ class Profile(db.Model):
             "bio": self.bio,
             "has_avatar": self.avatar_key is not None,
             "avatar_url": f"/api/profiles/{self.id}/avatar" if self.avatar_key else None,
+            "has_thumbnail": self.thumbnail_key is not None,
+            "thumbnail_url": f"/api/profiles/{self.id}/avatar?size=thumb" if self.thumbnail_key else None,
             "created_at": self.created_at.isoformat() + "Z",
         }
 
@@ -114,6 +122,53 @@ def _s3():
     return _s3_client
 
 
+def _rabbitmq_url():
+    """Build an AMQP URL from the environment, or None if messaging is disabled.
+
+    Credentials are assembled from parts so the password (a Secrets Manager
+    value) never has to be stored as a full connection string anywhere.
+    """
+    host = os.environ.get("RABBITMQ_HOST")
+    if not host:
+        return None
+    user = os.environ.get("RABBITMQ_USER", "guest")
+    password = os.environ.get("RABBITMQ_PASSWORD", "guest")
+    port = os.environ.get("RABBITMQ_PORT", "5672")
+    return f"amqp://{user}:{password}@{host}:{port}/"
+
+
+def _publish_avatar_job(profile_id, key):
+    """Enqueue a thumbnail job for the worker. Best-effort: if the broker is
+    unavailable (or messaging is turned off) the upload still succeeds — the
+    profile simply keeps its full-size avatar with no thumbnail."""
+    url = _rabbitmq_url()
+    if not url:
+        return
+    try:
+        import json
+
+        import pika
+
+        params = pika.URLParameters(url)
+        params.socket_timeout = 3
+        params.blocked_connection_timeout = 3
+        connection = pika.BlockingConnection(params)
+        try:
+            channel = connection.channel()
+            channel.queue_declare(queue=AVATAR_QUEUE, durable=True)
+            channel.basic_publish(
+                exchange="",
+                routing_key=AVATAR_QUEUE,
+                body=json.dumps({"profile_id": profile_id, "key": key}),
+                properties=pika.BasicProperties(delivery_mode=2),  # persist message
+            )
+        finally:
+            connection.close()
+    except Exception as exc:  # noqa: BLE001
+        # Never fail the user-facing upload because the queue is down.
+        print(f"avatar job publish failed (non-fatal): {exc}", flush=True)
+
+
 def _store_avatar(bucket, profile, file):
     """Validate + upload an avatar to S3. Returns (status_code, error_or_none)."""
     if file is None or file.filename == "":
@@ -128,13 +183,19 @@ def _store_avatar(bucket, profile, file):
     _s3().put_object(Bucket=bucket, Key=key, Body=file.read(), ContentType=file.mimetype)
 
     old_key = profile.avatar_key
+    old_thumb = profile.thumbnail_key
     profile.avatar_key = key
+    profile.thumbnail_key = None  # invalidate the old thumbnail; worker regenerates it
     db.session.commit()
-    if old_key:
-        try:
-            _s3().delete_object(Bucket=bucket, Key=old_key)
-        except Exception:
-            pass  # best-effort cleanup of the previous avatar
+    for stale in (old_key, old_thumb):
+        if stale:
+            try:
+                _s3().delete_object(Bucket=bucket, Key=stale)
+            except Exception:
+                pass  # best-effort cleanup of the previous avatar / thumbnail
+
+    # Hand thumbnail generation off to the worker via RabbitMQ.
+    _publish_avatar_job(profile.id, key)
     return 201, None
 
 
@@ -483,7 +544,11 @@ def _register_api_routes(app):
         bucket = app.config.get("AVATAR_BUCKET")
         if not bucket:
             return jsonify({"error": "avatar storage is not configured"}), 503
-        obj = _s3().get_object(Bucket=bucket, Key=profile.avatar_key)
+        # ?size=thumb serves the worker-generated thumbnail, falling back to the
+        # original if it hasn't been processed yet.
+        wants_thumb = request.args.get("size") == "thumb"
+        key = profile.thumbnail_key if (wants_thumb and profile.thumbnail_key) else profile.avatar_key
+        obj = _s3().get_object(Bucket=bucket, Key=key)
         return Response(
             obj["Body"].read(),
             mimetype=obj.get("ContentType", "application/octet-stream"),

@@ -21,7 +21,8 @@
         {% for p in profiles %}
         <a class="profile-card" href="{{ url_for('web_profile', pid=p.id) }}">
             {% if p.avatar_key %}
-            <img class="avatar lg" src="{{ url_for('get_avatar', pid=p.id) }}" alt="">
+            {# Prefer the worker-generated thumbnail in the feed; falls back to the original. #}
+            <img class="avatar lg" src="{{ url_for('get_avatar', pid=p.id) }}{{ '?size=thumb' if p.thumbnail_key else '' }}" alt="">
             {% else %}
             <div class="avatar lg ph">{{ (p.display_name or p.username)[0]|upper }}</div>
             {% endif %}

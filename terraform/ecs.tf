@@ -53,6 +53,10 @@ resource "aws_ecs_task_definition" "app" {
         { name = "ENABLE_XRAY", value = "true" },
         { name = "XRAY_SERVICE_NAME", value = local.name },
         { name = "AWS_XRAY_DAEMON_ADDRESS", value = "127.0.0.1:2000" },
+        # Empty when messaging is disabled, so the avatar-job producer no-ops.
+        { name = "RABBITMQ_HOST", value = local.rabbitmq_host },
+        { name = "RABBITMQ_USER", value = "app" },
+        { name = "RABBITMQ_PORT", value = "5672" },
       ]
 
       # Secrets pulled from Secrets Manager at launch (specific JSON keys), so
@@ -62,6 +66,7 @@ resource "aws_ecs_task_definition" "app" {
         { name = "DB_PASSWORD", valueFrom = "${module.database.db_secret_arn}:password::" },
         { name = "SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:SECRET_KEY::" },
         { name = "COGNITO_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.app.arn}:COGNITO_CLIENT_SECRET::" },
+        { name = "RABBITMQ_PASSWORD", valueFrom = "${aws_secretsmanager_secret.app.arn}:RABBITMQ_PASSWORD::" },
       ]
 
       logConfiguration = {
